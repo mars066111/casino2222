@@ -763,6 +763,17 @@
         const originalLoseMsg = window.loseMsg;
         window.loseMsg = function(){ trackGame(0, 0); originalLoseMsg(); };
 
+        // ИЗМЕНЕНИЕ: Убираем уведомления через 3 секунды после появления (скрытие тоста)
+        window.showToast = function(text) {
+            const toast = $('toast');
+            if (!toast) return;
+            toast.innerText = text;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        };
+
         async function api(path, opts){
             try { const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts)); return await r.json(); }
             catch(e){ return null; }
