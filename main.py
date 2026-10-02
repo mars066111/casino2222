@@ -1,4 +1,4 @@
-rom http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
