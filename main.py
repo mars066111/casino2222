@@ -28,7 +28,7 @@ server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 # --------------------------------------------------------------------
 
-TOKEN = "8980639396:AAFCDoDBWSHUR4gQU4PAym-RHAvx6ujt6PM"
+TOKEN = "8146823914:AAHI2Sgp9NZ6KcIFhWFtJKq15SForB_08_0"
 bot = telebot.TeleBot(TOKEN)
 
 # Базовая ссылка на ваше мини-приложение
