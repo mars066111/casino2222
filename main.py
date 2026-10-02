@@ -32,7 +32,7 @@ TOKEN = "8980639396:AAFCDoDBWSHUR4gQU4PAym-RHAvx6ujt6PM"
 bot = telebot.TeleBot(TOKEN)
 
 # Базовая ссылка на ваше мини-приложение
-BASE_WEB_APP_URL = "https://mars066111.github.io/tgcasinobot/"
+BASE_WEB_APP_URL = "https://mars066111.github.io/casino2222/"
 OWNER_ID = 7126242568
 
 
