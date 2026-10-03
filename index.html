@@ -1783,5 +1783,180 @@ renderCasesList();upgRender();
 })();
 </script>
 
+<!-- ===== ПАТЧ 2: ежедневка, задания, лига, контракты, магазин/уровни, звуки ===== -->
+<style>
+.bottom-nav .nav-item{font-size:.6rem}.bottom-nav .nav-item span{font-size:1.15rem}
+.dl-row{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:8px 0}
+.dl-d{background:#1c0910;border-radius:8px;padding:6px 0;text-align:center;font-size:.6rem;font-weight:800;opacity:.5}
+.dl-d.ok{opacity:1;border:1px solid var(--gold);color:var(--gold)}
+.q-row{background:#1c0910;border-radius:12px;padding:10px;margin-bottom:6px;font-size:.8rem;font-weight:700}
+.q-row .ck-bar{height:8px;margin:6px 0}
+.q-row button,.shop-row button{background:var(--gold);color:#1a0509;border:none;border-radius:8px;padding:6px 10px;font-weight:800;font-size:.72rem}
+.q-row button:disabled,.shop-row button:disabled{opacity:.4}
+.shop-row{display:flex;justify-content:space-between;align-items:center;background:#1c0910;border-radius:10px;padding:8px 10px;margin-bottom:5px;font-size:.8rem;font-weight:700}
+.lg-row{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(255,122,47,.15);font-size:.8rem}
+.lg-row.me{background:rgba(255,182,39,.15);color:var(--gold);font-weight:800}
+</style>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+let M={lastDaily:'',streak:0,q:null,contracts:0,ownT:['Новичок'],ownF:[''],title:'Новичок',frame:'',sound:true};
+try{Object.assign(M,JSON.parse(localStorage.getItem('lc_meta')||'{}'))}catch(e){}
+const sv=()=>{try{localStorage.setItem('lc_meta',JSON.stringify(M))}catch(e){}};
+const S=()=>{try{return JSON.parse(localStorage.getItem('lc_stats')||'{}')}catch(e){return{}}};
+const day=d=>(d||new Date()).toLocaleDateString('sv');
+const yest=()=>{const d=new Date();d.setDate(d.getDate()-1);return day(d)};
+
+/* ---- звуки ---- */
+let ac;
+function sfx(k){
+ if(!M.sound)return;
+ try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();
+  const q={win:[[523,.1],[659,.1],[784,.2]],lose:[[300,.15],[200,.28]],tick:[[900,.03]],spin:[[400,.06],[500,.06],[600,.06],[700,.06]],coin:[[988,.08],[1319,.22]]}[k];
+  let t=ac.currentTime;
+  q.forEach(a=>{const o=ac.createOscillator(),g=ac.createGain();o.type=k==='lose'?'sawtooth':'sine';o.frequency.value=a[0];
+   g.gain.setValueAtTime(k==='tick'?.03:.08,t);g.gain.exponentialRampToValueAtTime(.0001,t+a[1]);
+   o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+a[1]);t+=a[1]});
+ }catch(e){}
+}
+const _w=winMsg;winMsg=function(a){sfx('win');_w(a)};
+const _l=loseMsg;loseMsg=function(){sfx('lose');_l()};
+const _h=haptic;haptic=function(s){if(s==='light')sfx('tick');_h(s)};
+const _sco=startCaseOpening;startCaseOpening=function(id){_sco(id);sfx('spin')};
+
+/* ---- уровни ---- */
+const ups=s=>(s.upW||0)+(s.upL||0);
+function xp(){const s=S();return (s.games||0)*10+(s.cases||0)*30+ups(s)*20+M.contracts*40+(s.clicks||0)*15}
+function lvl(){return Math.floor(Math.sqrt(xp()/50))+1}
+
+/* ---- задания ---- */
+const CUR={games:s=>s.games||0,cases:s=>s.cases||0,ups:ups,clicks:s=>s.clicks||0,contracts:()=>M.contracts};
+const POOL=[{k:'games',n:5,r:1500,t:'Сыграй 5 игр'},{k:'cases',n:3,r:2500,t:'Открой 3 кейса'},{k:'ups',n:1,r:2000,t:'Сделай апгрейд'},{k:'clicks',n:1,r:1200,t:'Забери приз в кликере'},{k:'contracts',n:1,r:3000,t:'Сделай контракт обмена'}];
+function genQ(){
+ if(M.q&&M.q.date===day())return;
+ const s=S(),p=POOL.slice().sort(()=>Math.random()-.5).slice(0,3);
+ M.q={date:day(),list:p.map(o=>Object.assign({},o,{base:CUR[o.k](s),claimed:false}))};sv();
+}
+const prog=q=>Math.min(q.n,CUR[q.k](S())-q.base);
+
+/* ---- ежедневная награда ---- */
+const canDaily=()=>M.lastDaily!==day();
+const nextStreak=()=>M.lastDaily===yest()?M.streak+1:1;
+const dailyAmt=st=>Math.round((1000+Math.min(st,7)*500)*(1+.05*(lvl()-1)));
+window.mDaily=function(){
+ if(!canDaily())return;
+ const st=nextStreak(),a=dailyAmt(st);
+ M.streak=st;M.lastDaily=day();sv();balance+=a;updateBalance();sfx('coin');hapticNotif('success');
+ showToast('🎁 Ежедневная награда: +'+fmt(a)+' 🪙 (серия '+st+')');render();
+};
+window.mQuest=function(i){
+ const q=M.q.list[i];if(q.claimed||prog(q)<q.n)return;
+ q.claimed=true;sv();balance+=q.r;updateBalance();sfx('coin');showToast('✅ Задание выполнено: +'+fmt(q.r)+' 🪙');render();
+};
+window.mSound=function(){M.sound=!M.sound;sv();render();sfx('coin')};
+
+/* ---- магазин ---- */
+const TITLES=[['Новичок',0],['Хайроллер',20000],['Легенда',100000]];
+const FRAMES=[['',0],['🔥',10000],['👑',50000],['💎',150000]];
+window.mShop=function(type,i){
+ const list=type==='t'?TITLES:FRAMES,own=type==='t'?M.ownT:M.ownF,it=list[i];
+ if(own.indexOf(it[0])<0){
+  if(balance<it[1]){showToast('❌ Недостаточно монет!');return}
+  balance-=it[1];own.push(it[0]);updateBalance();sfx('coin');
+ }
+ if(type==='t')M.title=it[0];else M.frame=it[0];
+ sv();render();
+};
+
+/* ---- лига (боты) ---- */
+const BOTS=[['Шмель',9000],['xX_Ghost_Xx',24000],['Алекс',48000],['CaseKing',90000],['Дима',150000],['AWPer',260000],['NoScope',420000],['Леонид',700000]];
+function league(){
+ const me=Math.max(S().maxBal||0,balance),g=1+(new Date().getDate()%10)*.01;
+ const rows=BOTS.map(b=>({n:b[0],s:Math.round(b[1]*g)})).concat([{n:'Ты',s:me,me:1}]).sort((a,b)=>b.s-a.s);
+ const rank=rows.findIndex(r=>r.me)+1;
+ return'<div class="mini-note">Твоё место: <b style="color:var(--gold)">#'+rank+'</b> из '+rows.length+' · счёт = максимум денег</div>'
+  +rows.map((r,i)=>'<div class="lg-row'+(r.me?' me':'')+'"><span>'+(i+1)+'. '+r.n+'</span><span>'+fmt(r.s)+' 🪙</span></div>').join('');
+}
+
+/* ---- вкладка «Ещё» ---- */
+const mc=document.createElement('div');mc.className='container';mc.id='tab-more';
+document.querySelector('.disclaimer').before(mc);
+const nb=document.createElement('button');nb.className='nav-item';nb.innerHTML='<span>⭐</span>Ещё';
+nb.onclick=function(){switchTab('more',nb)};
+document.querySelector('nav.bottom-nav').appendChild(nb);
+function render(){
+ genQ();
+ const L=lvl(),cx=xp(),lo=Math.pow(L-1,2)*50,hi=Math.pow(L,2)*50,pc=Math.round((cx-lo)/(hi-lo)*100);
+ const st=nextStreak(),cs=canDaily()?st:M.streak;
+ let h='<div class="section-title"><span>⭐ Бонусы</span><span>Ур. '+L+'</span></div>'
+  +'<div class="prof-card"><div class="mini-note">Опыт: '+fmt(cx)+' / '+fmt(hi)+' · бонус к наградам +'+(5*(L-1))+'%</div><div class="ck-bar"><div style="width:'+pc+'%"></div></div></div>'
+  +'<div class="section-title"><span>🎁 Ежедневная награда</span></div><div class="prof-card"><div class="dl-row">'
+  +[1,2,3,4,5,6,7].map(d=>'<div class="dl-d'+(d<=Math.min(cs,7)&&(!canDaily()||d<st)?' ok':'')+'">'+d+'<br>'+fmt(Math.round((1000+d*500)*(1+.05*(L-1))))+'</div>').join('')
+  +'</div><button class="btn btn-gold'+(canDaily()?'':' disabled')+'" onclick="mDaily()">'+(canDaily()?'Забрать +'+fmt(dailyAmt(st))+' 🪙':'Приходи завтра')+'</button></div>'
+  +'<div class="section-title"><span>📋 Задания на сегодня</span></div>'
+  +M.q.list.map((q,i)=>{const p=prog(q);return'<div class="q-row"><div style="display:flex;justify-content:space-between"><span>'+q.t+'</span><span style="color:var(--gold)">+'+fmt(q.r)+' 🪙</span></div><div class="ck-bar"><div style="width:'+(p/q.n*100)+'%"></div></div><div style="display:flex;justify-content:space-between;align-items:center"><span class="mini-note">'+p+' / '+q.n+'</span><button '+(q.claimed||p<q.n?'disabled':'')+' onclick="mQuest('+i+')">'+(q.claimed?'Получено':'Забрать')+'</button></div></div>'}).join('')
+  +'<div class="section-title" style="margin-top:14px"><span>🏆 Лига</span><span>боты</span></div><div class="prof-card" style="padding:6px">'+league()+'</div>'
+  +'<div class="section-title" style="margin-top:14px"><span>🛍 Магазин</span></div>'
+  +TITLES.map((t,i)=>shopRow('t',i,t,M.ownT,M.title,t[0])).join('')
+  +FRAMES.map((t,i)=>shopRow('f',i,t,M.ownF,M.frame,t[0]||'Без рамки')).join('')
+  +'<div class="section-title" style="margin-top:14px"><span>🔊 Звук</span></div><button class="btn" onclick="mSound()">'+(M.sound?'Выключить звуки':'Включить звуки')+'</button>';
+ mc.innerHTML=h;
+}
+function shopRow(type,i,it,own,cur,label){
+ const has=own.indexOf(it[0])>-1,on=cur===it[0];
+ return'<div class="shop-row"><span>'+(type==='t'?'Титул':'Рамка')+': '+label+'</span><button '+(on?'disabled':'')+' onclick="mShop(\''+type+'\','+i+')">'+(on?'Надето':has?'Надеть':fmt(it[1])+' 🪙')+'</button></div>';
+}
+const _sw=switchTab;
+switchTab=function(t,b){
+ _sw(t,b);
+ if(t==='more')render();
+ if(t==='profile'){const n=document.querySelector('.prof-name');if(n)n.innerHTML=(M.frame?M.frame+' ':'')+n.innerText.replace('👤 ','👤 ')+' <small style="color:var(--gold)">· '+M.title+' · ур. '+lvl()+'</small>'}
+};
+
+/* ---- контракты обмена ---- */
+const NX={milspec:'restricted',restricted:'classified',classified:'covert'};
+let cSel=[];
+const inv=$('tab-inventory').querySelector('div[style*="margin-bottom:12px"]');
+if(inv)inv.insertAdjacentHTML('afterend','<div style="margin-bottom:12px"><button class="btn" style="font-size:.9rem;padding:10px" onclick="openContract()">📜 Контракт обмена</button></div>');
+window.openContract=function(){
+ cSel=[];$('modal-back-btn').classList.remove('disabled');$('game-modal').classList.add('active');
+ $('modal-game-title').innerText='📜 Контракт';cRender();
+};
+function cRender(){
+ const el=inventory.filter(i=>NX[i.rarity]);
+ $('game-content-area').innerHTML='<div><div class="mini-note">Выбери 10 скинов одной редкости (кроме тайных и ножей) — получишь 1 скин редкостью выше</div><div class="selector-modal-list" style="max-height:52vh">'
+  +(el.length?el.map(i=>{const idx=inventory.indexOf(i),on=cSel.indexOf(i)>-1,r=RARITY[i.rarity];
+   return'<div class="inventory-item" style="cursor:pointer;border-top:3px solid '+r.color+(on?';outline:2px solid var(--gold)':'')+'" onclick="cPick('+idx+')"><span class="rarity-chip" style="background:'+r.color+'">'+r.label+'</span><img class="inv-skin-img" src="'+itemImg(i)+'" onerror="this.src=\''+generateFallbackSVG(i)+'\'"><div class="inv-skin-weapon">'+i.weapon+'</div><div class="inv-skin-name">'+i.name+'</div><div class="inv-skin-price">'+fmt(i.price)+' 🪙</div></div>'}).join(''):'<div class="empty-inv">Нет подходящих скинов</div>')
+  +'</div></div><button class="btn'+(cSel.length===10?'':' disabled')+'" onclick="cGo()">Обменять ('+cSel.length+'/10)</button>';
+}
+window.cPick=function(idx){
+ const it=inventory[idx],i=cSel.indexOf(it);
+ if(i>-1)cSel.splice(i,1);
+ else{
+  if(cSel.length&&cSel[0].rarity!==it.rarity){showToast('Нужна одна редкость');return}
+  if(cSel.length>=10){showToast('Максимум 10 скинов');return}
+  cSel.push(it);
+ }
+ haptic('light');cRender();
+};
+window.cGo=function(){
+ if(cSel.length!==10)return;
+ const sum=cSel.reduce((s,i)=>s+i.price,0),tr=NX[cSel[0].rarity];
+ const pool=ALL_POSSIBLE_SKINS.filter(o=>o.rarity===tr);
+ if(!pool.length){showToast('Нет скинов для обмена');return}
+ let fit=pool.filter(o=>o.price<=sum*1.3);
+ if(!fit.length)fit=[pool.slice().sort((a,b)=>a.price-b.price)[0]];
+ const w=fit[Math.floor(Math.random()*fit.length)];
+ inventory=inventory.filter(i=>cSel.indexOf(i)<0);
+ inventory.unshift(Object.assign({},w,{id:Date.now()+Math.random()}));
+ M.contracts++;sv();saveGame();updateElo();renderInventory();
+ sfx('coin');hapticNotif('success');showToast('📜 Контракт: получен '+w.weapon+' | '+w.name);closeGame();
+};
+
+genQ();
+if(canDaily())setTimeout(()=>showToast('🎁 Доступна ежедневная награда! Вкладка «Ещё»'),1500);
+})();
+</script>
+
 </body>
 </html>
